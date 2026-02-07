@@ -41,6 +41,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Playwright and browsers as root to shared location
+ENV PLAYWRIGHT_BROWSERS_PATH=/usr/local/share/ms-playwright
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-venv \
+    && python3 -m venv /opt/playwright-venv \
+    && /opt/playwright-venv/bin/pip install playwright \
+    && /opt/playwright-venv/bin/playwright install chromium --with-deps \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install mcp-cli
 ARG TARGETARCH
 RUN ARCH=$(if [ "${TARGETARCH}" = "amd64" ]; then echo "x64"; else echo "${TARGETARCH}"; fi) && \
