@@ -19,26 +19,27 @@ COPY . .
 RUN CI=true CGO_ENABLED=0 go generate ./... && go build -o nanobot .
 
 # Final stage
-FROM cgr.dev/chainguard/wolfi-base:latest AS runtime
+FROM ubuntu:24.04 AS runtime
 
-# Install bash, git, common utilities, uv, and poppler-utils (provides pdftoppm
+# Install bash, git, common utilities, and poppler-utils (provides pdftoppm
 # and pdfinfo, used by the built-in read tool to render PDF pages as images)
-RUN apk update && apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     git \
     curl \
     wget \
     jq \
     gzip \
-    xz \
+    xz-utils \
     coreutils \
     findutils \
     grep \
     sed \
     gawk \
     ripgrep \
-    uv \
-    poppler-utils
+    poppler-utils \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install mcp-cli
 ARG TARGETARCH
@@ -48,7 +49,7 @@ RUN ARCH=$(if [ "${TARGETARCH}" = "amd64" ]; then echo "x64"; else echo "${TARGE
     chmod +x /usr/bin/mcp-cli
 
 # Create non-root user with home directory
-RUN adduser -D -h /home/nanobot -s /bin/bash nanobot
+RUN useradd -m -d /home/nanobot -s /bin/bash nanobot
 
 # Create data and config directories with proper ownership
 RUN mkdir -p /data /home/nanobot/.nanobot && \
@@ -59,6 +60,13 @@ WORKDIR /home/nanobot
 
 # Set common env vars
 ENV HOME=/home/nanobot
+
+# Install uv and browser-use as nanobot user
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    /home/nanobot/.local/bin/uv tool install browser-use
+
+# Add uv tools to PATH
+ENV PATH="/home/nanobot/.local/bin:$PATH"
 ENV NANOBOT_STATE=/data/nanobot.db
 ENV NANOBOT_RUN_LISTEN_ADDRESS=0.0.0.0:8080
 
