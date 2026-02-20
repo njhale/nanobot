@@ -3,18 +3,24 @@ package system
 import (
 	"context"
 	"fmt"
+	"io"
 	"mime"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nanobot-ai/nanobot/pkg/fswatch"
 	"github.com/nanobot-ai/nanobot/pkg/log"
 	"github.com/nanobot-ai/nanobot/pkg/mcp"
 )
 
-var maxWatchDepth = 2
+var (
+	// fileCreatedAt gets a file's creation time.
+	fileCreatedAt func(relPath string, info os.FileInfo) time.Time
+	maxWatchDepth = 2
+)
 
 func init() {
 	maxWatchDepthEnv := os.Getenv("NANOBOT_FILE_WATCH_MAX_DEPTH")
@@ -82,6 +88,33 @@ func fileFilter(relPath string, info os.FileInfo) bool {
 	}
 
 	return true
+}
+
+// fileResourceMeta returns a given file's resource metadata.
+func fileResourceMeta(relPath string, info os.FileInfo) map[string]any {
+	if info == nil {
+		return nil
+	}
+
+	var (
+		modifiedAt = info.ModTime()
+		meta       = make(map[string]any)
+	)
+	if !modifiedAt.IsZero() {
+		meta["modifiedAt"] = formatTimestamp(modifiedAt)
+	}
+
+	if fileCreatedAt != nil {
+		if createdAt := fileCreatedAt(relPath, info); !createdAt.IsZero() && !createdAt.After(modifiedAt) {
+			meta["createdAt"] = formatTimestamp(createdAt)
+		}
+	}
+
+	return meta
+}
+
+func formatTimestamp(t time.Time) string {
+	return t.UTC().Format(time.RFC3339Nano)
 }
 
 // handleFileEvents processes filesystem events from the watcher.
@@ -166,6 +199,8 @@ func (s *Server) listFileResources() ([]mcp.Resource, error) {
 			URI:      "file:///" + relPath,
 			Name:     relPath,
 			MimeType: mimeType,
+			Size:     info.Size(),
+			Meta:     fileResourceMeta(relPath, info),
 		})
 
 		return nil
@@ -196,13 +231,24 @@ func (s *Server) readFileResource(uri string) (*mcp.ReadResourceResult, error) {
 		return nil, mcp.ErrRPCInvalidParams.WithMessage("invalid file path: cannot access files outside working directory")
 	}
 
-	// Read file
-	content, err := os.ReadFile(relPath)
+	// Open file once to get both content and metadata
+	f, err := os.Open(relPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, mcp.ErrRPCInvalidParams.WithMessage("file not found: %s", uri)
 		}
+		return nil, fmt.Errorf("failed to open file: %w", err)
+	}
+	defer f.Close()
+
+	content, err := io.ReadAll(f)
+	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
 
 	// Determine MIME type
@@ -219,6 +265,7 @@ func (s *Server) readFileResource(uri string) (*mcp.ReadResourceResult, error) {
 				Name:     filepath.Base(relPath),
 				MIMEType: mimeType,
 				Text:     &contentStr,
+				Meta:     fileResourceMeta(relPath, info),
 			},
 		},
 	}, nil
