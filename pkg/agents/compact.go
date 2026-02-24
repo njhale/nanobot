@@ -208,6 +208,9 @@ func buildTranscript(messages []types.Message) string {
 						}
 						fmt.Fprintf(&sb, "[tool result]: %s\n", text)
 					}
+					if c.Type == "image" {
+						fmt.Fprintln(&sb, "[tool result]: [image data omitted]")
+					}
 				}
 			}
 		}

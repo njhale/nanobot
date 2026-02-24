@@ -27,5 +27,6 @@ const { chat }: Props = $props();
 		isLoading={chat.isLoading}
 		agent={chat.agent}
 		onCancel={chat.cancelChat}
+		onReadResource={chat.readResource}
 	/>
 {/key}

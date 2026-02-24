@@ -75,6 +75,44 @@ func TestCompletionItem_Image(t *testing.T) {
 	}
 }
 
+func TestCompletionItem_ResourceLink(t *testing.T) {
+	item := CompletionItem{
+		ID: "test-id",
+		Content: &mcp.Content{
+			Type:     "resource_link",
+			URI:      "file:///docs/example.pdf",
+			Name:     "example.pdf",
+			MIMEType: "application/pdf",
+		},
+	}
+
+	data, err := json.Marshal(item)
+	if err != nil {
+		t.Fatalf("Failed to marshal CompletionItem: %v", err)
+	}
+
+	var unmarshalledItem CompletionItem
+	if err := json.Unmarshal(data, &unmarshalledItem); err != nil {
+		t.Fatalf("Failed to unmarshal CompletionItem: %v", err)
+	}
+
+	if unmarshalledItem.Content == nil {
+		t.Fatalf("expected content to be present after unmarshal, got nil")
+	}
+	if unmarshalledItem.Content.Type != "resource_link" {
+		t.Fatalf("expected content type resource_link, got %q", unmarshalledItem.Content.Type)
+	}
+	if unmarshalledItem.Content.URI != "file:///docs/example.pdf" {
+		t.Fatalf("expected URI to round-trip, got %q", unmarshalledItem.Content.URI)
+	}
+	if unmarshalledItem.Content.Name != "example.pdf" {
+		t.Fatalf("expected Name to round-trip, got %q", unmarshalledItem.Content.Name)
+	}
+	if unmarshalledItem.Content.MIMEType != "application/pdf" {
+		t.Fatalf("expected MIMEType to round-trip, got %q", unmarshalledItem.Content.MIMEType)
+	}
+}
+
 func TestCompletionItem_Tool(t *testing.T) {
 	item := CompletionItem{
 		ID: "test-id",

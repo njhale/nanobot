@@ -9,6 +9,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -957,6 +958,59 @@ func hasOnlySampleKeys(args map[string]any) bool {
 	return true
 }
 
+func fileAttachmentPath(uri string) (string, error) {
+	if !strings.HasPrefix(uri, "file:///") {
+		return "", fmt.Errorf("invalid attachment URL: %s, only data URI and file:/// URIs are supported", uri)
+	}
+
+	rawPath := strings.TrimPrefix(uri, "file:///")
+	if rawPath == "" {
+		return "", fmt.Errorf("invalid attachment URL: %s, missing file path", uri)
+	}
+
+	path, err := url.PathUnescape(rawPath)
+	if err != nil {
+		return "", fmt.Errorf("invalid attachment URL: %s, failed to decode path: %w", uri, err)
+	}
+
+	if path == "" {
+		return "", fmt.Errorf("invalid attachment URL: %s, missing file path", uri)
+	}
+
+	return path, nil
+}
+
+func attachmentPreview(attachment types.Attachment, decodedPath string) mcp.Content {
+	name := attachment.Name
+	if name == "" {
+		name = filepath.Base(decodedPath)
+	}
+	if name == "" || name == "." || name == "/" {
+		name = decodedPath
+	}
+
+	return mcp.Content{
+		Type:     "resource_link",
+		URI:      attachment.URL,
+		Name:     name,
+		MIMEType: attachment.MimeType,
+	}
+}
+
+func buildAttachmentContextMessage(paths []string) string {
+	var sb strings.Builder
+	if len(paths) == 1 {
+		fmt.Fprintf(&sb, "The user has attached the following file %q.\n", paths[0])
+	} else {
+		sb.WriteString("The user has attached the following files:\n")
+		for _, path := range paths {
+			fmt.Fprintf(&sb, "- %q\n", path)
+		}
+	}
+	sb.WriteString("Use the read tool to extract file content as needed")
+	return sb.String()
+}
+
 func (s *Service) convertToSampleRequest(config types.Config, agent string, args any) (*mcp.CreateMessageRequest, error) {
 	var (
 		sampleArgs types.SampleCallRequest
@@ -995,6 +1049,7 @@ func (s *Service) convertToSampleRequest(config types.Config, agent string, args
 		},
 	}
 
+	previewMessageIndex := -1
 	if sampleArgs.Prompt != "" {
 		sampleRequest.Messages = append(sampleRequest.Messages, mcp.SamplingMessage{
 			Role: "user",
@@ -1003,15 +1058,38 @@ func (s *Service) convertToSampleRequest(config types.Config, agent string, args
 				Text: sampleArgs.Prompt,
 			}},
 		})
+		previewMessageIndex = len(sampleRequest.Messages) - 1
 	}
 
+	var (
+		filePaths    []string
+		filePreviews []mcp.Content
+		seenFilePath = map[string]struct{}{}
+	)
+
 	for _, attachment := range sampleArgs.Attachments {
+		if strings.HasPrefix(attachment.URL, "file:///") {
+			path, err := fileAttachmentPath(attachment.URL)
+			if err != nil {
+				return nil, err
+			}
+
+			if _, seen := seenFilePath[path]; seen {
+				continue
+			}
+
+			seenFilePath[path] = struct{}{}
+			filePaths = append(filePaths, path)
+			filePreviews = append(filePreviews, attachmentPreview(attachment, path))
+			continue
+		}
+
 		if !strings.HasPrefix(attachment.URL, "data:") {
-			return nil, fmt.Errorf("invalid attachment URL: %s, only data URI are supported", attachment.URL)
+			return nil, fmt.Errorf("invalid attachment URL: %s, only data URI and file:/// URIs are supported", attachment.URL)
 		}
 		parts := strings.Split(strings.TrimPrefix(attachment.URL, "data:"), "base64,")
 		if len(parts) != 2 {
-			return nil, fmt.Errorf("invalid attachment URL: %s, only data URI are supported", attachment.URL)
+			return nil, fmt.Errorf("invalid attachment URL: %s, only data URI and file:/// URIs are supported", attachment.URL)
 		}
 		mimeType := strings.Split(parts[0], ";")[0]
 		if mimeType == "" {
@@ -1022,6 +1100,7 @@ func (s *Service) convertToSampleRequest(config types.Config, agent string, args
 			sampleRequest.Messages = append(sampleRequest.Messages, mcp.SamplingMessage{
 				Role: "user",
 				Content: []mcp.Content{{
+					Name:     attachment.Name,
 					Type:     "image",
 					Data:     data,
 					MIMEType: mimeType,
@@ -1043,6 +1122,30 @@ func (s *Service) convertToSampleRequest(config types.Config, agent string, args
 				}},
 			})
 		}
+	}
+
+	if len(filePreviews) > 0 {
+		if previewMessageIndex == -1 {
+			sampleRequest.Messages = append(sampleRequest.Messages, mcp.SamplingMessage{
+				Role:    "user",
+				Content: filePreviews,
+			})
+		} else {
+			sampleRequest.Messages[previewMessageIndex].Content = append(sampleRequest.Messages[previewMessageIndex].Content, filePreviews...)
+		}
+	}
+
+	if len(filePaths) > 0 {
+		sampleRequest.Messages = append(sampleRequest.Messages, mcp.SamplingMessage{
+			Role: "user",
+			Content: []mcp.Content{{
+				Type: "text",
+				Text: buildAttachmentContextMessage(filePaths),
+				Meta: map[string]any{
+					types.AttachmentMetaKey: true,
+				},
+			}},
+		})
 	}
 
 	return &sampleRequest, nil

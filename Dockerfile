@@ -21,7 +21,8 @@ RUN CI=true CGO_ENABLED=0 go generate ./... && go build -o nanobot .
 # Final stage
 FROM cgr.dev/chainguard/wolfi-base:latest AS runtime
 
-# Install bash, git, common utilities, and uv
+# Install bash, git, common utilities, uv, and poppler-utils (provides pdftoppm
+# and pdfinfo, used by the built-in read tool to render PDF pages as images)
 RUN apk update && apk add --no-cache \
     bash \
     git \
@@ -36,7 +37,8 @@ RUN apk update && apk add --no-cache \
     sed \
     gawk \
     ripgrep \
-    uv
+    uv \
+    poppler-utils
 
 # Create non-root user with home directory
 RUN adduser -D -h /home/nanobot -s /bin/bash nanobot

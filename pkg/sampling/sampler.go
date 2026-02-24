@@ -156,7 +156,14 @@ func (s *Sampler) Sample(ctx context.Context, req mcp.CreateMessageRequest, opts
 			id = uuid.String()
 		}
 
-		if role != currentRole {
+		forceNewMessage := role != currentRole
+		if !forceNewMessage && len(msg.Content) > 0 && msg.Content[0].Meta != nil {
+			if hidden, ok := msg.Content[0].Meta[types.AttachmentMetaKey].(bool); ok && hidden {
+				forceNewMessage = true
+			}
+		}
+
+		if forceNewMessage {
 			now := time.Now()
 			request.Input = append(request.Input, types.Message{
 				ID:      id,

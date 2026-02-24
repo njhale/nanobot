@@ -8,8 +8,10 @@ import (
 )
 
 const (
-	AgentTool            = "chat-with-"
-	AgentToolDescription = "Chat with the agent"
+	AgentTool             = "chat-with-"
+	AgentToolDescription  = "Chat with the agent"
+	AttachmentMetaKey     = "ai.nanobot.meta/attachment"
+	SkipTruncationMetaKey = "ai.nanobot.meta/skip-truncation"
 )
 
 var ChatInputSchema = []byte(`{

@@ -1,12 +1,12 @@
 package system
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"os/exec"
@@ -30,8 +30,6 @@ const (
 	maxHTTPTimeout     = 120 * time.Second
 	defaultBashTimeout = 120 * time.Second
 	maxBashTimeout     = 600 * time.Second
-	defaultReadLimit   = 2000
-	maxLineLength      = 2000
 	sessionsDir        = "sessions"
 )
 
@@ -125,7 +123,8 @@ Usage:
 - Results are returned using cat -n format, with line numbers starting at 1
 - You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.
 - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
-- You can read image files using this tool.`, s.read),
+- You can read image files using this tool.
+- This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 10 pages per request.`, s.read),
 		// Write tool
 		mcp.NewServerTool("write", `Writes a file to the local filesystem.
 
@@ -291,6 +290,21 @@ Parameters:
 - name (required): The name of the dynamically added server to remove
 
 Only servers added via addMCPServer can be removed with this tool.`, s.removeMCPServer),
+		// File management tools
+		mcp.NewServerTool("uploadFile", `Uploads a file to the session directory from base64-encoded content.
+
+Parameters:
+- name (required): Filename or relative path (e.g., "photo.png" or "uploads/doc.pdf")
+- blob (required): Base64-encoded file content
+- mimeType (optional): MIME type of the file (auto-detected from extension if omitted)
+
+Returns a resource_link with the file:/// URI of the uploaded file.`, s.uploadFile),
+		mcp.NewServerTool("deleteFile", `Deletes a file or directory in the session directory.
+
+Parameters:
+- uri (required): The file:/// URI of the file to delete
+
+For directories, all contents are removed recursively.`, s.deleteFile),
 	)
 
 	return s
@@ -511,72 +525,34 @@ func (s *Server) bash(ctx context.Context, params BashParams) (string, error) {
 
 // Read tool
 type ReadParams struct {
+	// FilePath is the absolute path to the file to read.
 	FilePath string `json:"file_path"`
-	Offset   *int   `json:"offset,omitempty"`
-	Limit    *int   `json:"limit,omitempty"`
+	// Offset is the line number to start reading from (default beginning of file).
+	// Only applicable to text files.
+	Offset *int `json:"offset,omitempty"`
+	// Limit is the number of lines to read (default 2000).
+	// Only applicable to text files.
+	Limit *int `json:"limit,omitempty"`
+	// Pages is the page range for PDF files (e.g., "1-5", "3", "10-20").
+	// Only applicable to PDF files. Maximum 10 pages per request.
+	Pages *string `json:"pages,omitempty"`
 }
 
-func (s *Server) read(ctx context.Context, params ReadParams) (string, error) {
+func (s *Server) read(ctx context.Context, params ReadParams) (*mcp.CallToolResult, error) {
 	if params.FilePath == "" {
-		return "", mcp.ErrRPCInvalidParams.WithMessage("file_path is required")
+		return nil, mcp.ErrRPCInvalidParams.WithMessage("file_path is required")
 	}
 
-	file, err := os.Open(params.FilePath)
-	if err != nil {
-		return "", fmt.Errorf("error reading file: %w", err)
-	}
-	defer file.Close()
+	mimeType := mime.TypeByExtension(filepath.Ext(params.FilePath))
 
-	// Determine offset and limit
-	var offset int
-	if params.Offset != nil {
-		offset = *params.Offset
+	if _, ok := types.PDFMimeTypes[mimeType]; ok {
+		return readPDF(ctx, params)
+	}
+	if _, ok := types.ImageMimeTypes[mimeType]; ok {
+		return readImage(params, mimeType)
 	}
 
-	limit := defaultReadLimit
-	if params.Limit != nil {
-		limit = *params.Limit
-	}
-
-	var (
-		result    strings.Builder
-		linesRead int
-	)
-	reader := bufio.NewReader(file)
-	lineNum := 1
-
-	for {
-		if linesRead >= limit {
-			break
-		}
-
-		line, err := reader.ReadString('\n')
-		if len(line) > 0 {
-			line = strings.TrimRight(line, "\n\r")
-
-			if lineNum > offset {
-				// Truncate long lines
-				if len(line) > maxLineLength {
-					line = line[:maxLineLength]
-				}
-
-				// Format with line number (cat -n style)
-				fmt.Fprintf(&result, "%6d\t%s\n", lineNum, line)
-				linesRead++
-			}
-
-			lineNum++
-		}
-
-		if err != nil {
-			if err != io.EOF {
-				return "", fmt.Errorf("error reading file: %w", err)
-			}
-			break
-		}
-	}
-
-	return result.String(), nil
+	return readText(params)
 }
 
 // Write tool
