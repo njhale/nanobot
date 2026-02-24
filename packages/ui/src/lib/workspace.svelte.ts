@@ -152,7 +152,7 @@ export class WorkspaceInstance implements WorkspaceClient {
 
 		const uri = `workspace://${path}`;
 
-		await this.#client.callMCPTool("create_resource", {
+		await this.#client.callMCPTool("uploadFile", {
 			payload: {
 				name: uri,
 				blob: base64Data,
@@ -176,7 +176,7 @@ export class WorkspaceInstance implements WorkspaceClient {
 	async deleteFile(path: string): Promise<void> {
 		const uri = `workspace://${path}`;
 
-		await this.#client.callMCPTool("delete_resource", {
+		await this.#client.callMCPTool("deleteFile", {
 			payload: {
 				uri,
 			},
@@ -209,7 +209,7 @@ export class WorkspaceInstance implements WorkspaceClient {
 	async deleteSession(sessionId: string): Promise<void> {
 		const uri = `session://${sessionId}`;
 
-		await this.#client.callMCPTool("delete_resource", {
+		await this.#client.callMCPTool("deleteFile", {
 			payload: {
 				uri,
 			},

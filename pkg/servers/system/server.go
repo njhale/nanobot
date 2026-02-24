@@ -276,6 +276,21 @@ Parameters:
 - name (required): The name of the dynamically added server to remove
 
 Only servers added via addMCPServer can be removed with this tool.`, s.removeMCPServer),
+		// File management tools
+		mcp.NewServerTool("uploadFile", `Uploads a file to the working directory from base64-encoded content.
+
+Parameters:
+- name (required): Filename or relative path (e.g., "photo.png" or "uploads/doc.pdf")
+- blob (required): Base64-encoded file content
+- mimeType (optional): MIME type of the file (auto-detected from extension if omitted)
+
+Returns a resource_link with the file:/// URI of the uploaded file.`, s.uploadFile),
+		mcp.NewServerTool("deleteFile", `Deletes a file or directory in the working directory.
+
+Parameters:
+- uri (required): The file:/// URI of the file to delete (e.g., "file:///uploads/doc.pdf")
+
+For directories, all contents are removed recursively.`, s.deleteFile),
 	)
 
 	return s

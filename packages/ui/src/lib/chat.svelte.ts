@@ -192,7 +192,7 @@ export class ChatAPI {
 			abort?: AbortController;
 		},
 	): Promise<Attachment> {
-		const { result } = await this.callMCPTool<Attachment>("create_resource", {
+		const { result } = await this.callMCPTool<Attachment>("uploadFile", {
 			payload: {
 				blob,
 				mimeType,
@@ -684,6 +684,18 @@ export class ChatService {
 			}
 			return false;
 		});
+
+		// Delete the uploaded file from disk
+		const uploaded = this.uploadedFiles.find((f) => f.id === fileId);
+		if (uploaded?.uri) {
+			this.api
+				.callMCPTool("deleteFile", {
+					payload: { uri: uploaded.uri },
+					sessionId: this.chatId,
+				})
+				.catch((err) => console.error("Failed to delete uploaded file:", err));
+		}
+
 		this.uploadedFiles = this.uploadedFiles.filter((f) => f.id !== fileId);
 	};
 

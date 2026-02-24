@@ -1,5 +1,5 @@
 <script lang="ts">
-import { ChevronDown } from "@lucide/svelte";
+import { ChevronDown, Upload } from "@lucide/svelte";
 import Elicitation from "$lib/components/Elicitation.svelte";
 import Prompt from "$lib/components/Prompt.svelte";
 import type {
@@ -116,9 +116,61 @@ function scrollToBottom() {
 		});
 	}
 }
+
+// Drag-and-drop file upload
+let isDragging = $state(false);
+let dragCounter = 0;
+
+function handleDragEnter(e: DragEvent) {
+	e.preventDefault();
+	dragCounter++;
+	if (e.dataTransfer?.types.includes("Files")) {
+		isDragging = true;
+	}
+}
+
+function handleDragLeave(e: DragEvent) {
+	e.preventDefault();
+	dragCounter--;
+	if (dragCounter === 0) {
+		isDragging = false;
+	}
+}
+
+function handleDragOver(e: DragEvent) {
+	e.preventDefault();
+}
+
+async function handleDrop(e: DragEvent) {
+	e.preventDefault();
+	dragCounter = 0;
+	isDragging = false;
+
+	if (!onFileUpload || !e.dataTransfer?.files.length) return;
+
+	for (const file of e.dataTransfer.files) {
+		onFileUpload(file);
+	}
+}
 </script>
 
-<div class="flex h-dvh w-full flex-col md:relative peer-[.workspace]:md:w-1/4">
+<div
+	class="flex h-dvh w-full flex-col md:relative peer-[.workspace]:md:w-1/4"
+	ondragenter={handleDragEnter}
+	ondragleave={handleDragLeave}
+	ondragover={handleDragOver}
+	ondrop={handleDrop}
+>
+	<!-- Drag-and-drop overlay -->
+	{#if isDragging}
+		<div class="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-base-300/60 backdrop-blur-sm">
+			<div class="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-primary bg-base-100/90 px-10 py-8 shadow-xl">
+				<Upload class="size-10 text-primary" />
+				<p class="text-lg font-semibold text-base-content">Drop files to upload</p>
+			</div>
+		</div>
+	{/if}
+
 	<!-- Messages area - full height scrollable with bottom padding for floating input -->
 	<div class="w-full overflow-y-auto" bind:this={messagesContainer} onscroll={handleScroll}>
 		<div class="mx-auto max-w-4xl">
