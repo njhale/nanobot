@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +34,7 @@ const (
 	maxBashTimeout     = 600 * time.Second
 	defaultReadLimit   = 2000
 	maxLineLength      = 2000
+	maxPDFPages        = 20
 )
 
 type Server struct {
@@ -106,7 +109,8 @@ Usage:
 - Results are returned using cat -n format, with line numbers starting at 1
 - You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.
 - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
-- You can read image files using this tool.`, s.read),
+- You can read image files using this tool.
+- This tool can read PDF files (.pdf). For large PDFs (more than 10 pages), you MUST provide the pages parameter to read specific page ranges (e.g., pages: "1-5"). Reading a large PDF without the pages parameter will fail. Maximum 20 pages per request.`, s.read),
 		// Write tool
 		mcp.NewServerTool("write", `Writes a file to the local filesystem.
 
@@ -453,14 +457,20 @@ func (s *Server) bash(ctx context.Context, params BashParams) (string, error) {
 
 // Read tool
 type ReadParams struct {
-	FilePath string `json:"file_path"`
-	Offset   *int   `json:"offset,omitempty"`
-	Limit    *int   `json:"limit,omitempty"`
+	FilePath string  `json:"file_path"`
+	Offset   *int    `json:"offset,omitempty"`
+	Limit    *int    `json:"limit,omitempty"`
+	Pages    *string `json:"pages,omitempty"`
 }
 
-func (s *Server) read(ctx context.Context, params ReadParams) (string, error) {
+func (s *Server) read(ctx context.Context, params ReadParams) (any, error) {
 	if params.FilePath == "" {
-		return "", mcp.ErrRPCInvalidParams.WithMessage("file_path is required")
+		return nil, mcp.ErrRPCInvalidParams.WithMessage("file_path is required")
+	}
+
+	// PDF handling
+	if isPDF(params.FilePath) {
+		return readPDF(ctx, params.FilePath, params.Pages)
 	}
 
 	file, err := os.Open(params.FilePath)
@@ -518,6 +528,139 @@ func (s *Server) read(ctx context.Context, params ReadParams) (string, error) {
 	}
 
 	return result.String(), nil
+}
+
+// isPDF checks if a file has a .pdf extension.
+func isPDF(filePath string) bool {
+	return strings.EqualFold(filepath.Ext(filePath), ".pdf")
+}
+
+// parsePagesParam parses a pages parameter like "1-5", "3", or "10-20" into first and last page numbers.
+func parsePagesParam(pages string) (first, last int, err error) {
+	pages = strings.TrimSpace(pages)
+	if pages == "" {
+		return 0, 0, fmt.Errorf("empty pages parameter")
+	}
+
+	parts := strings.SplitN(pages, "-", 2)
+	first, err = strconv.Atoi(strings.TrimSpace(parts[0]))
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid page number %q: %w", parts[0], err)
+	}
+
+	if len(parts) == 2 {
+		last, err = strconv.Atoi(strings.TrimSpace(parts[1]))
+		if err != nil {
+			return 0, 0, fmt.Errorf("invalid page number %q: %w", parts[1], err)
+		}
+	} else {
+		last = first
+	}
+
+	if first < 1 {
+		return 0, 0, fmt.Errorf("page numbers must be >= 1, got %d", first)
+	}
+	if last < first {
+		return 0, 0, fmt.Errorf("last page (%d) must be >= first page (%d)", last, first)
+	}
+	if last-first+1 > maxPDFPages {
+		return 0, 0, fmt.Errorf("requested %d pages, maximum is %d", last-first+1, maxPDFPages)
+	}
+
+	return first, last, nil
+}
+
+// getPDFPageCount runs pdfinfo to get the total number of pages in a PDF.
+func getPDFPageCount(ctx context.Context, filePath string) (int, error) {
+	cmd := exec.CommandContext(ctx, "pdfinfo", filePath)
+	output, err := cmd.Output()
+	if err != nil {
+		return 0, fmt.Errorf("failed to run pdfinfo: %w", err)
+	}
+
+	for line := range strings.SplitSeq(string(output), "\n") {
+		if strings.HasPrefix(line, "Pages:") {
+			countStr := strings.TrimSpace(strings.TrimPrefix(line, "Pages:"))
+			count, err := strconv.Atoi(countStr)
+			if err != nil {
+				return 0, fmt.Errorf("failed to parse page count %q: %w", countStr, err)
+			}
+			return count, nil
+		}
+	}
+
+	return 0, fmt.Errorf("could not find page count in pdfinfo output")
+}
+
+// readPDF reads a PDF file by converting pages to PNG images via pdftoppm.
+func readPDF(ctx context.Context, filePath string, pages *string) ([]mcp.Content, error) {
+	// Check that pdftoppm is available
+	if _, err := exec.LookPath("pdftoppm"); err != nil {
+		return nil, fmt.Errorf("pdftoppm not found on PATH. Install poppler to read PDF files (e.g., brew install poppler, apt-get install poppler-utils)")
+	}
+
+	// Get total page count
+	totalPages, err := getPDFPageCount(ctx, filePath)
+	if err != nil {
+		// If pdfinfo fails, try to proceed anyway with explicit pages
+		if pages == nil {
+			return nil, fmt.Errorf("could not determine PDF page count (install poppler-utils for pdfinfo): %w", err)
+		}
+		totalPages = 0 // unknown
+	}
+
+	var first, last int
+	if pages != nil {
+		first, last, err = parsePagesParam(*pages)
+		if err != nil {
+			return nil, mcp.ErrRPCInvalidParams.WithMessage("invalid pages parameter: %v", err)
+		}
+		if totalPages > 0 && last > totalPages {
+			return nil, mcp.ErrRPCInvalidParams.WithMessage("requested page %d but PDF only has %d pages", last, totalPages)
+		}
+	} else {
+		if totalPages > 10 {
+			return nil, mcp.ErrRPCInvalidParams.WithMessage(
+				"PDF has %d pages which exceeds the limit for reading without a page range. "+
+					"Please specify a pages parameter (e.g., pages: \"1-5\") to read specific pages. Maximum %d pages per request.",
+				totalPages, maxPDFPages)
+		}
+		first = 1
+		last = totalPages
+	}
+
+	// Build result with leading text block
+	content := []mcp.Content{
+		{
+			Type: "text",
+			Text: fmt.Sprintf("PDF: %s (pages %d-%d of %d)", filepath.Base(filePath), first, last, totalPages),
+		},
+	}
+
+	// Render each page
+	for page := first; page <= last; page++ {
+		cmd := exec.CommandContext(ctx, "pdftoppm",
+			"-png",
+			"-f", strconv.Itoa(page),
+			"-l", strconv.Itoa(page),
+			"-r", "150",
+			"-singlefile",
+			filePath,
+		)
+
+		pngData, err := cmd.Output()
+		if err != nil {
+			return nil, fmt.Errorf("failed to render page %d: %w", page, err)
+		}
+
+		content = append(content, mcp.Content{
+			Type:     "image",
+			Data:     base64.StdEncoding.EncodeToString(pngData),
+			MIMEType: "image/png",
+		})
+	}
+
+	return content, nil
 }
 
 // Write tool
