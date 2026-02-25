@@ -28,8 +28,8 @@ func (s *Server) uploadFile(ctx context.Context, params CreateFileParams) (*mcp.
 	}
 
 	// Security: clean path and reject traversal / absolute paths
-	cleanPath := filepath.Clean(params.Name)
-	if strings.HasPrefix(cleanPath, "..") || filepath.IsAbs(cleanPath) {
+	relPath := filepath.Clean(params.Name)
+	if strings.HasPrefix(relPath, "..") || filepath.IsAbs(relPath) {
 		return nil, mcp.ErrRPCInvalidParams.WithMessage("invalid file path: cannot access files outside working directory")
 	}
 
@@ -40,7 +40,7 @@ func (s *Server) uploadFile(ctx context.Context, params CreateFileParams) (*mcp.
 	}
 
 	// Create parent directories if needed
-	dir := filepath.Dir(cleanPath)
+	dir := filepath.Dir(relPath)
 	if dir != "." {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return nil, fmt.Errorf("failed to create directories: %w", err)
@@ -48,30 +48,29 @@ func (s *Server) uploadFile(ctx context.Context, params CreateFileParams) (*mcp.
 	}
 
 	// Write file
-	if err := os.WriteFile(cleanPath, data, 0644); err != nil {
+	if err := os.WriteFile(relPath, data, 0644); err != nil {
 		return nil, fmt.Errorf("failed to write file: %w", err)
 	}
 
 	// Determine MIME type
 	mimeType := params.MimeType
 	if mimeType == "" {
-		mimeType = mime.TypeByExtension(filepath.Ext(cleanPath))
+		mimeType = mime.TypeByExtension(filepath.Ext(relPath))
 		if mimeType == "" {
 			mimeType = "application/octet-stream"
 		}
 	}
 
-	info, err := os.Stat(cleanPath)
+	info, err := os.Stat(relPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat file: %w", err)
 	}
 
 	return &mcp.Resource{
-		URI:      "file:///" + cleanPath,
-		Name:     cleanPath,
+		URI:      "file:///" + relPath,
+		Name:     filepath.Base(relPath),
 		MimeType: mimeType,
 		Size:     info.Size(),
-		Meta:     fileResourceMeta(cleanPath, info),
 	}, nil
 }
 

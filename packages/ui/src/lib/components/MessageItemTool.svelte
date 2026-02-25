@@ -45,12 +45,7 @@
 					width: `${coords[0]}`,
 					height: `${coords[1]}`
 				};
-			} else if (
-				coords &&
-				typeof coords === 'object' &&
-				'height' in coords &&
-				'width' in coords
-			) {
+			} else if (coords && typeof coords === 'object' && 'height' in coords && 'width' in coords) {
 				return {
 					width: `${coords.width}`,
 					height: `${coords.height}`

@@ -775,6 +775,7 @@ func (s *Service) Call(ctx context.Context, server, tool string, args any, opts 
 		StructuredContent: mcpCallResult.StructuredContent,
 		Content:           mcpCallResult.Content,
 		IsError:           mcpCallResult.IsError,
+		SkipTruncation:    mcpCallResult.SkipTruncation,
 	}, nil
 }
 

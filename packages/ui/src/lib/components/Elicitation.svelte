@@ -282,15 +282,15 @@
 									<span class="text-xs font-bold text-base-content/40">{i + 1}.</span>
 									<span class="text-sm font-medium">{q.header || q.question}</span>
 								</div>
-								<p class="ml-4 text-sm {hasAnswer(i) ? 'text-base-content/70' : 'text-base-content/30 italic'}">
+								<p
+									class="ml-4 text-sm {hasAnswer(i)
+										? 'text-base-content/70'
+										: 'text-base-content/30 italic'}"
+								>
 									{getAnswerSummary(i)}
 								</p>
 							</div>
-							<button
-								type="button"
-								class="btn btn-ghost ml-2 btn-xs"
-								onclick={() => goToStep(i)}
-							>
+							<button type="button" class="btn ml-2 btn-ghost btn-xs" onclick={() => goToStep(i)}>
 								<Pencil class="h-3 w-3" />
 							</button>
 						</div>
@@ -299,14 +299,16 @@
 
 				<div class="mt-4 flex justify-end gap-2">
 					<button type="button" class="btn btn-ghost btn-sm" onclick={handleDecline}>Cancel</button>
-					<button type="button" class="btn btn-primary btn-sm" onclick={handleQuestionSubmit}>Submit</button>
+					<button type="button" class="btn btn-sm btn-primary" onclick={handleQuestionSubmit}
+						>Submit</button
+					>
 				</div>
 			{:else}
 				<!-- Active question -->
 				{@const q = questions[currentStep]}
 
 				{#if isSingle && q.header}
-					<div class="badge badge-neutral badge-sm mb-1">{q.header}</div>
+					<div class="mb-1 badge badge-sm badge-neutral">{q.header}</div>
 				{/if}
 				<p class="mb-2 text-sm font-medium">{q.question}</p>
 				{#if q.multiple}
@@ -320,22 +322,20 @@
 						<button
 							type="button"
 							class="flex w-full cursor-pointer items-start gap-2.5 rounded-lg border p-2.5 text-left transition-colors
-								{isSelected
-								? 'border-primary bg-primary/10'
-								: 'border-base-300 hover:border-base-content/20'}"
+								{isSelected ? 'border-primary bg-primary/10' : 'border-base-300 hover:border-base-content/20'}"
 							onclick={() => toggleOption(currentStep, option.label)}
 						>
 							{#if q.multiple}
 								<input
 									type="checkbox"
-									class="checkbox checkbox-primary checkbox-sm mt-0.5"
+									class="checkbox mt-0.5 checkbox-sm checkbox-primary"
 									checked={isSelected}
 									tabindex={-1}
 								/>
 							{:else}
 								<input
 									type="radio"
-									class="radio radio-primary radio-sm mt-0.5"
+									class="radio mt-0.5 radio-sm radio-primary"
 									checked={isSelected}
 									tabindex={-1}
 								/>
@@ -350,7 +350,7 @@
 					{/each}
 				</div>
 
-					<!-- Custom answer as styled option -->
+				<!-- Custom answer as styled option -->
 				{@const isCustomSelected = showCustomInput.get(currentStep) ?? false}
 				<div
 					role="button"
@@ -360,19 +360,21 @@
 						? 'border-primary bg-primary/10'
 						: 'border-base-300 hover:border-base-content/20'}"
 					onclick={() => toggleCustomInput(currentStep)}
-					onkeydown={(e) => { if (e.key === 'Enter') toggleCustomInput(currentStep); }}
+					onkeydown={(e) => {
+						if (e.key === 'Enter') toggleCustomInput(currentStep);
+					}}
 				>
 					{#if q.multiple}
 						<input
 							type="checkbox"
-							class="checkbox checkbox-primary checkbox-sm mt-0.5"
+							class="checkbox mt-0.5 checkbox-sm checkbox-primary"
 							checked={isCustomSelected}
 							tabindex={-1}
 						/>
 					{:else}
 						<input
 							type="radio"
-							class="radio radio-primary radio-sm mt-0.5"
+							class="radio mt-0.5 radio-sm radio-primary"
 							checked={isCustomSelected}
 							tabindex={-1}
 						/>
@@ -382,13 +384,13 @@
 						{#if isCustomSelected}
 							<!-- svelte-ignore a11y_autofocus -->
 							<textarea
-								class="textarea textarea-bordered mt-1.5 w-full text-sm"
+								class="textarea-bordered textarea mt-1.5 w-full text-sm"
 								placeholder="Type your answer..."
 								rows={2}
 								autofocus
 								value={customAnswers.get(currentStep) ?? ''}
 								onclick={(e) => e.stopPropagation()}
-							oninput={(e) => updateCustomAnswer(currentStep, e.currentTarget.value)}
+								oninput={(e) => updateCustomAnswer(currentStep, e.currentTarget.value)}
 							></textarea>
 						{/if}
 					</div>
@@ -398,7 +400,7 @@
 				<div class="mt-3 flex items-center justify-between">
 					<button
 						type="button"
-						class="btn btn-ghost btn-xs text-base-content/40"
+						class="btn text-base-content/40 btn-ghost btn-xs"
 						onclick={nextStep}
 					>
 						<SkipForward class="h-3 w-3" />
@@ -417,16 +419,12 @@
 							</button>
 						{/if}
 						{#if isSingle}
-							<button
-								type="button"
-								class="btn btn-ghost btn-sm"
-								onclick={handleDecline}
-							>
+							<button type="button" class="btn btn-ghost btn-sm" onclick={handleDecline}>
 								Cancel
 							</button>
 							<button
 								type="button"
-								class="btn btn-primary btn-sm"
+								class="btn btn-sm btn-primary"
 								disabled={!hasAnswer(currentStep)}
 								onclick={handleQuestionSubmit}
 							>
@@ -435,7 +433,7 @@
 						{:else if currentStep < questions.length - 1}
 							<button
 								type="button"
-								class="btn btn-primary btn-sm"
+								class="btn btn-sm btn-primary"
 								disabled={!hasAnswer(currentStep)}
 								onclick={nextStep}
 							>
@@ -445,7 +443,7 @@
 						{:else}
 							<button
 								type="button"
-								class="btn btn-primary btn-sm"
+								class="btn btn-sm btn-primary"
 								disabled={!hasAnswer(currentStep)}
 								onclick={() => (reviewMode = true)}
 							>

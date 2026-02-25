@@ -293,6 +293,7 @@ type CallResult struct {
 	Model             string        `json:"model,omitempty"`
 	StopReason        string        `json:"stopReason,omitempty"`
 	StructuredContent any           `json:"structuredContent,omitempty"`
+	SkipTruncation    bool          `json:"skipTruncation,omitempty"`
 }
 
 type AsyncCallResult struct {

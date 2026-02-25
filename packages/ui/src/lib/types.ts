@@ -130,6 +130,7 @@ export interface Attachment {
 	name?: string;
 	uri: string;
 	mimeType?: string;
+	size?: number;
 }
 
 export interface ChatResult {

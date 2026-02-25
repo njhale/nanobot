@@ -163,6 +163,7 @@ func contentToContent(content []mcp.Content) (result []Content) {
 				Source: ContentSource{
 					MediaType: item.MIMEType,
 					Data:      item.Data,
+					Type:      "base64",
 				},
 			})
 		} else if item.Type == "resource" && item.Resource != nil && item.Resource.Annotations != nil && slices.Contains(item.Resource.Annotations.Audience, "assistant") {
@@ -172,6 +173,7 @@ func contentToContent(content []mcp.Content) (result []Content) {
 					Source: ContentSource{
 						MediaType: item.Resource.MIMEType,
 						Data:      item.Resource.Blob,
+						Type:      "base64",
 					},
 				})
 				continue

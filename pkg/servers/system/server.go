@@ -478,19 +478,26 @@ type ReadParams struct {
 	Pages    *string `json:"pages,omitempty"`
 }
 
-func (s *Server) read(ctx context.Context, params ReadParams) (any, error) {
+func (s *Server) read(ctx context.Context, params ReadParams) (*mcp.CallToolResult, error) {
 	if params.FilePath == "" {
 		return nil, mcp.ErrRPCInvalidParams.WithMessage("file_path is required")
 	}
 
 	// PDF handling
 	if isPDF(params.FilePath) {
-		return readPDF(ctx, params.FilePath, params.Pages)
+		content, err := readPDF(ctx, params.FilePath, params.Pages)
+		if err != nil {
+			return nil, err
+		}
+		return &mcp.CallToolResult{
+			Content:        content,
+			SkipTruncation: true,
+		}, nil
 	}
 
 	file, err := os.Open(params.FilePath)
 	if err != nil {
-		return "", fmt.Errorf("error reading file: %w", err)
+		return nil, fmt.Errorf("error reading file: %w", err)
 	}
 	defer file.Close()
 
@@ -539,10 +546,12 @@ func (s *Server) read(ctx context.Context, params ReadParams) (any, error) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		return "", fmt.Errorf("error reading file: %w", err)
+		return nil, fmt.Errorf("error reading file: %w", err)
 	}
 
-	return result.String(), nil
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{{Type: "text", Text: result.String()}},
+	}, nil
 }
 
 // isPDF checks if a file has a .pdf extension.
@@ -607,7 +616,7 @@ func getPDFPageCount(ctx context.Context, filePath string) (int, error) {
 	return 0, fmt.Errorf("could not find page count in pdfinfo output")
 }
 
-// readPDF reads a PDF file by converting pages to PNG images via pdftoppm.
+// readPDF reads a PDF file by converting pages to JPEG images via pdftoppm.
 func readPDF(ctx context.Context, filePath string, pages *string) ([]mcp.Content, error) {
 	// Check that pdftoppm is available
 	if _, err := exec.LookPath("pdftoppm"); err != nil {
@@ -655,7 +664,8 @@ func readPDF(ctx context.Context, filePath string, pages *string) ([]mcp.Content
 	// Render each page
 	for page := first; page <= last; page++ {
 		cmd := exec.CommandContext(ctx, "pdftoppm",
-			"-png",
+			"-jpeg",
+			"-jpegopt", "quality=85",
 			"-f", strconv.Itoa(page),
 			"-l", strconv.Itoa(page),
 			"-r", "150",
@@ -663,15 +673,15 @@ func readPDF(ctx context.Context, filePath string, pages *string) ([]mcp.Content
 			filePath,
 		)
 
-		pngData, err := cmd.Output()
+		jpegData, err := cmd.Output()
 		if err != nil {
 			return nil, fmt.Errorf("failed to render page %d: %w", page, err)
 		}
 
 		content = append(content, mcp.Content{
 			Type:     "image",
-			Data:     base64.StdEncoding.EncodeToString(pngData),
-			MIMEType: "image/png",
+			Data:     base64.StdEncoding.EncodeToString(jpegData),
+			MIMEType: "image/jpeg",
 		})
 	}
 

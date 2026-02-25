@@ -24,7 +24,7 @@ func truncateToolResult(ctx context.Context, toolName, callID string, msg *types
 	}
 
 	result := msg.Items[0].ToolCallResult
-	if result == nil {
+	if result == nil || result.Output.SkipTruncation {
 		return msg
 	}
 

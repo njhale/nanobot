@@ -335,6 +335,7 @@ type CallToolResult struct {
 	IsError           bool      `json:"isError"`
 	Content           []Content `json:"content,omitzero"`
 	StructuredContent any       `json:"structuredContent,omitempty"`
+	SkipTruncation    bool      `json:"skipTruncation,omitempty"`
 }
 
 type CallToolRequest struct {

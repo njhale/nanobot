@@ -39,7 +39,7 @@ func estimateTokens(messages []types.Message, systemPrompt string, tools []types
 					case "text", "":
 						sb.WriteString(c.Text)
 					case "image", "audio":
-						sb.WriteString(c.Data)
+						// sb.WriteString(c.Data)
 					case "resource":
 						if c.Resource != nil {
 							sb.WriteString(c.Resource.Text)

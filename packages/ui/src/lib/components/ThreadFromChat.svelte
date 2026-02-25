@@ -1,12 +1,12 @@
 <script lang="ts">
-import type { ChatService } from "$lib/chat.svelte";
-import Thread from "$lib/components/Thread.svelte";
+	import type { ChatService } from '$lib/chat.svelte';
+	import Thread from '$lib/components/Thread.svelte';
 
-interface Props {
-	chat: ChatService;
-}
+	interface Props {
+		chat: ChatService;
+	}
 
-const { chat }: Props = $props();
+	const { chat }: Props = $props();
 </script>
 
 {#key chat.chatId}

@@ -1,13 +1,7 @@
-import { SvelteDate, SvelteMap } from "svelte/reactivity";
-import { ChatService } from "./chat.svelte";
-import { SimpleClient } from "./mcpclient";
-import type {
-	Session,
-	SessionDetails,
-	Workspace,
-	WorkspaceClient,
-	WorkspaceFile,
-} from "./types";
+import { SvelteDate, SvelteMap } from 'svelte/reactivity';
+import { ChatService } from './chat.svelte';
+import { SimpleClient } from './mcpclient';
+import type { Session, SessionDetails, Workspace, WorkspaceClient, WorkspaceFile } from './types';
 
 export class WorkspaceInstance implements WorkspaceClient {
 	readonly #client: SimpleClient;
@@ -19,15 +13,10 @@ export class WorkspaceInstance implements WorkspaceClient {
 	sessions = $state<Session[]>([]);
 	loading = $state<boolean>(false);
 
-	constructor(
-		workspaceId: string,
-		service: WorkspaceService,
-		client?: SimpleClient,
-	) {
+	constructor(workspaceId: string, service: WorkspaceService, client?: SimpleClient) {
 		this.#workspaceId = workspaceId;
 		this.#service = service;
-		this.#client =
-			client ?? new SimpleClient({ workspaceId, workspaceShared: true });
+		this.#client = client ?? new SimpleClient({ workspaceId, workspaceShared: true });
 
 		// Load resources asynchronously
 		this.load();
@@ -41,11 +30,11 @@ export class WorkspaceInstance implements WorkspaceClient {
 		return (
 			this.#service.workspaces.find((w) => w.id === this.#workspaceId) ?? {
 				id: this.#workspaceId,
-				name: "Missing",
+				name: 'Missing',
 				created: new SvelteDate().toISOString(),
 				order: 0,
-				color: "",
-				icons: [],
+				color: '',
+				icons: []
 			}
 		);
 	}
@@ -68,9 +57,9 @@ export class WorkspaceInstance implements WorkspaceClient {
 
 	async newSession(opts?: { editor?: boolean }): Promise<ChatService> {
 		const client = new SimpleClient({
-			sessionId: "new",
+			sessionId: 'new',
 			workspaceId: this.#workspaceId,
-			workspaceShared: opts?.editor,
+			workspaceShared: opts?.editor
 		});
 		const { id: sessionId } = await client.getSessionDetails();
 		return this.getSession(sessionId);
@@ -81,23 +70,23 @@ export class WorkspaceInstance implements WorkspaceClient {
 
 		try {
 			const result = await this.#client.listResources({
-				prefix: ["workspace://", "session://"],
+				prefix: ['workspace://', 'session://']
 			});
 
 			// Map workspace:// resources to File objects and sort
 			this.files = result.resources
-				.filter((r) => r.uri.startsWith("workspace://"))
+				.filter((r) => r.uri.startsWith('workspace://'))
 				.map((r) => ({
-					name: r.name.replace("workspace://", ""),
+					name: r.name.replace('workspace://', '')
 				}))
 				.sort((a, b) => a.name.localeCompare(b.name));
 
 			// Map session:// resources to Session objects
 			this.sessions = result.resources
-				.filter((r) => r.uri.startsWith("session://"))
+				.filter((r) => r.uri.startsWith('session://'))
 				.map((r) => ({
-					id: r.uri.replace("session://", ""),
-					title: r.description || r.name,
+					id: r.uri.replace('session://', ''),
+					title: r.description || r.name
 				}));
 		} finally {
 			this.loading = false;
@@ -113,7 +102,7 @@ export class WorkspaceInstance implements WorkspaceClient {
 		}
 
 		const content = result.contents[0];
-		const mimeType = content.mimeType || "application/octet-stream";
+		const mimeType = content.mimeType || 'application/octet-stream';
 
 		// Handle base64 blob
 		if (content.blob) {
@@ -138,7 +127,7 @@ export class WorkspaceInstance implements WorkspaceClient {
 		// Convert data to base64
 		let base64Data: string;
 
-		if (typeof data === "string") {
+		if (typeof data === 'string') {
 			// Convert string to base64
 			const encoder = new TextEncoder();
 			const bytes = encoder.encode(data);
@@ -152,20 +141,18 @@ export class WorkspaceInstance implements WorkspaceClient {
 
 		const uri = `workspace://${path}`;
 
-		await this.#client.callMCPTool("uploadFile", {
+		await this.#client.callMCPTool('uploadFile', {
 			payload: {
 				name: uri,
 				blob: base64Data,
-				mimeType: typeof data === "string" ? "text/plain" : data.type,
-			},
+				mimeType: typeof data === 'string' ? 'text/plain' : data.type
+			}
 		});
 
 		// Update files list if not already present
 		const exists = this.files.some((f) => f.name === path);
 		if (!exists) {
-			this.files = [...this.files, { name: path }].sort((a, b) =>
-				a.name.localeCompare(b.name),
-			);
+			this.files = [...this.files, { name: path }].sort((a, b) => a.name.localeCompare(b.name));
 		}
 	}
 
@@ -176,10 +163,10 @@ export class WorkspaceInstance implements WorkspaceClient {
 	async deleteFile(path: string): Promise<void> {
 		const uri = `workspace://${path}`;
 
-		await this.#client.callMCPTool("deleteFile", {
+		await this.#client.callMCPTool('deleteFile', {
 			payload: {
-				uri,
-			},
+				uri
+			}
 		});
 
 		// Remove file(s) from list
@@ -189,7 +176,7 @@ export class WorkspaceInstance implements WorkspaceClient {
 			if (f.name === path) return false; // Skip exact match
 			if (!f.name.startsWith(path)) return false; // Must start with path
 			const tail = f.name.slice(path.length);
-			return tail.startsWith("/"); // Tail must start with /
+			return tail.startsWith('/'); // Tail must start with /
 		});
 
 		if (hasDescendants) {
@@ -198,7 +185,7 @@ export class WorkspaceInstance implements WorkspaceClient {
 				if (f.name === path) return false;
 				if (!f.name.startsWith(path)) return true;
 				const tail = f.name.slice(path.length);
-				return !tail.startsWith("/");
+				return !tail.startsWith('/');
 			});
 		} else {
 			// This is a single file - remove exact match only
@@ -209,10 +196,10 @@ export class WorkspaceInstance implements WorkspaceClient {
 	async deleteSession(sessionId: string): Promise<void> {
 		const uri = `session://${sessionId}`;
 
-		await this.#client.callMCPTool("deleteFile", {
+		await this.#client.callMCPTool('deleteFile', {
 			payload: {
-				uri,
-			},
+				uri
+			}
 		});
 
 		const chat = this.#chatCache.get(sessionId);
@@ -248,34 +235,28 @@ export class WorkspaceService {
 
 	async load(): Promise<void> {
 		const workspaceResources = await this.#client.listResources({
-			prefix: "nanobot://workspaces/",
+			prefix: 'nanobot://workspaces/'
 		});
 
 		this.workspaces = workspaceResources.resources.map((resource) => ({
-			id: resource.uri.replace("nanobot://workspaces/", ""),
+			id: resource.uri.replace('nanobot://workspaces/', ''),
 			name: resource.name,
-			created:
-				(resource._meta?.created as string) ?? new SvelteDate().toISOString(),
+			created: (resource._meta?.created as string) ?? new SvelteDate().toISOString(),
 			order: (resource._meta?.order as number) ?? 0,
-			color: (resource._meta?.color as string) ?? "",
-			icons: resource.icons,
+			color: (resource._meta?.color as string) ?? '',
+			icons: resource.icons
 		}));
 	}
 
-	async createWorkspace(
-		workspace: Omit<Workspace, "id" | "created">,
-	): Promise<Workspace> {
-		const { result: created } = await this.#client.callMCPTool<Workspace>(
-			"create_workspace",
-			{
-				payload: {
-					name: workspace.name,
-					order: workspace.order,
-					color: workspace.color,
-					icons: workspace.icons,
-				},
-			},
-		);
+	async createWorkspace(workspace: Omit<Workspace, 'id' | 'created'>): Promise<Workspace> {
+		const { result: created } = await this.#client.callMCPTool<Workspace>('create_workspace', {
+			payload: {
+				name: workspace.name,
+				order: workspace.order,
+				color: workspace.color,
+				icons: workspace.icons
+			}
+		});
 
 		// Add to local state
 		this.workspaces = [...this.workspaces, created];
@@ -283,37 +264,30 @@ export class WorkspaceService {
 		return created;
 	}
 
-	async updateWorkspace(
-		workspace: Partial<Workspace> & Pick<Workspace, "id">,
-	): Promise<Workspace> {
-		const { result: updated } = await this.#client.callMCPTool<Workspace>(
-			"update_workspace",
-			{
-				payload: {
-					uri: `nanobot://workspaces/${workspace.id}`,
-					name: workspace.name,
-					order: workspace.order,
-					color: workspace.color,
-					icons: workspace.icons,
-				},
-			},
-		);
+	async updateWorkspace(workspace: Partial<Workspace> & Pick<Workspace, 'id'>): Promise<Workspace> {
+		const { result: updated } = await this.#client.callMCPTool<Workspace>('update_workspace', {
+			payload: {
+				uri: `nanobot://workspaces/${workspace.id}`,
+				name: workspace.name,
+				order: workspace.order,
+				color: workspace.color,
+				icons: workspace.icons
+			}
+		});
 
 		// Update local state
-		this.workspaces = this.workspaces.map((w) =>
-			w.id === updated.id ? updated : w,
-		);
+		this.workspaces = this.workspaces.map((w) => (w.id === updated.id ? updated : w));
 
 		return updated;
 	}
 
 	async deleteWorkspace(workspace: Workspace | string): Promise<void> {
-		const id = typeof workspace === "string" ? workspace : workspace.id;
+		const id = typeof workspace === 'string' ? workspace : workspace.id;
 
-		await this.#client.callMCPTool<string>("delete_workspace", {
+		await this.#client.callMCPTool<string>('delete_workspace', {
 			payload: {
-				uri: `nanobot://workspaces/${id}`,
-			},
+				uri: `nanobot://workspaces/${id}`
+			}
 		});
 
 		// Remove from local state
