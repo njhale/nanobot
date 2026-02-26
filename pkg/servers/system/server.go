@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"os/exec"
@@ -483,16 +484,13 @@ func (s *Server) read(ctx context.Context, params ReadParams) (*mcp.CallToolResu
 		return nil, mcp.ErrRPCInvalidParams.WithMessage("file_path is required")
 	}
 
-	// PDF handling
-	if isPDF(params.FilePath) {
-		content, err := readPDF(ctx, params.FilePath, params.Pages)
-		if err != nil {
-			return nil, err
-		}
-		return &mcp.CallToolResult{
-			Content:        content,
-			SkipTruncation: true,
-		}, nil
+	mimeType := mime.TypeByExtension(filepath.Ext(params.FilePath))
+	if _, isPDF := types.PDFMimeTypes[mimeType]; isPDF {
+		return readPDF(ctx, params.FilePath, params.Pages)
+	}
+
+	if _, isImage := types.ImageMimeTypes[mimeType]; isImage {
+		return readImage(ctx, params.FilePath)
 	}
 
 	file, err := os.Open(params.FilePath)
@@ -554,9 +552,39 @@ func (s *Server) read(ctx context.Context, params ReadParams) (*mcp.CallToolResu
 	}, nil
 }
 
-// isPDF checks if a file has a .pdf extension.
-func isPDF(filePath string) bool {
-	return strings.EqualFold(filepath.Ext(filePath), ".pdf")
+const readImageMaxBytes int64 = 10 << 20
+
+func readImage(ctx context.Context, filePath string) (*mcp.CallToolResult, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("error reading file: %w", err)
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("error getting file info: %w", err)
+	}
+
+	if size := info.Size(); size > readImageMaxBytes {
+		return nil, fmt.Errorf("file size %d B exceeds maximum allowed size %d B", size, readImageMaxBytes)
+	}
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("error reading file: %w", err)
+	}
+
+	return &mcp.CallToolResult{
+		Content: []mcp.Content{{
+			Type:     "image",
+			Data:     base64.StdEncoding.EncodeToString(data),
+			MIMEType: "image/jpeg",
+		},
+		},
+		SkipTruncation: true,
+	}, nil
+
 }
 
 // parsePagesParam parses a pages parameter like "1-5", "3", or "10-20" into first and last page numbers.
@@ -617,7 +645,7 @@ func getPDFPageCount(ctx context.Context, filePath string) (int, error) {
 }
 
 // readPDF reads a PDF file by converting pages to JPEG images via pdftoppm.
-func readPDF(ctx context.Context, filePath string, pages *string) ([]mcp.Content, error) {
+func readPDF(ctx context.Context, filePath string, pages *string) (*mcp.CallToolResult, error) {
 	// Check that pdftoppm is available
 	if _, err := exec.LookPath("pdftoppm"); err != nil {
 		return nil, fmt.Errorf("pdftoppm not found on PATH. Install poppler to read PDF files (e.g., brew install poppler, apt-get install poppler-utils)")
@@ -668,24 +696,27 @@ func readPDF(ctx context.Context, filePath string, pages *string) ([]mcp.Content
 			"-jpegopt", "quality=85",
 			"-f", strconv.Itoa(page),
 			"-l", strconv.Itoa(page),
-			"-r", "150",
+			"-scale-to", "1024",
 			"-singlefile",
 			filePath,
 		)
 
-		jpegData, err := cmd.Output()
+		data, err := cmd.Output()
 		if err != nil {
 			return nil, fmt.Errorf("failed to render page %d: %w", page, err)
 		}
 
 		content = append(content, mcp.Content{
 			Type:     "image",
-			Data:     base64.StdEncoding.EncodeToString(jpegData),
+			Data:     base64.StdEncoding.EncodeToString(data),
 			MIMEType: "image/jpeg",
 		})
 	}
 
-	return content, nil
+	return &mcp.CallToolResult{
+		Content:        content,
+		SkipTruncation: true,
+	}, nil
 }
 
 // Write tool

@@ -176,7 +176,6 @@ func contentToContent(content []mcp.Content) (result []Content) {
 						Type:      "base64",
 					},
 				})
-				continue
 			} else if _, ok := types.TextMimeTypes[item.Resource.MIMEType]; ok {
 				if item.Resource.Blob != "" {
 					text, _ := base64.StdEncoding.DecodeString(item.Resource.Blob)

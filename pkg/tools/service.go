@@ -1023,6 +1023,7 @@ func (s *Service) convertToSampleRequest(config types.Config, agent string, args
 			sampleRequest.Messages = append(sampleRequest.Messages, mcp.SamplingMessage{
 				Role: "user",
 				Content: []mcp.Content{{
+					Name:     attachment.Name,
 					Type:     "image",
 					Data:     data,
 					MIMEType: mimeType,

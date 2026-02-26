@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"mime"
@@ -9,18 +10,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/nanobot-ai/nanobot/pkg/fswatch"
 	"github.com/nanobot-ai/nanobot/pkg/log"
 	"github.com/nanobot-ai/nanobot/pkg/mcp"
+	"github.com/nanobot-ai/nanobot/pkg/types"
 )
 
-var (
-	// fileCreatedAt gets a file's creation time.
-	fileCreatedAt func(relPath string, info os.FileInfo) time.Time
-	maxWatchDepth = 2
-)
+var maxWatchDepth = 2
 
 func init() {
 	maxWatchDepthEnv := os.Getenv("NANOBOT_FILE_WATCH_MAX_DEPTH")
@@ -88,33 +85,6 @@ func fileFilter(relPath string, info os.FileInfo) bool {
 	}
 
 	return true
-}
-
-// fileResourceMeta returns a given file's resource metadata.
-func fileResourceMeta(relPath string, info os.FileInfo) map[string]any {
-	if info == nil {
-		return nil
-	}
-
-	var (
-		modifiedAt = info.ModTime()
-		meta       = make(map[string]any)
-	)
-	if !modifiedAt.IsZero() {
-		meta["modifiedAt"] = formatTimestamp(modifiedAt)
-	}
-
-	if fileCreatedAt != nil {
-		if createdAt := fileCreatedAt(relPath, info); !createdAt.IsZero() && !createdAt.After(modifiedAt) {
-			meta["createdAt"] = formatTimestamp(createdAt)
-		}
-	}
-
-	return meta
-}
-
-func formatTimestamp(t time.Time) string {
-	return t.UTC().Format(time.RFC3339Nano)
 }
 
 // handleFileEvents processes filesystem events from the watcher.
@@ -194,13 +164,19 @@ func (s *Server) listFileResources() ([]mcp.Resource, error) {
 		if mimeType == "" {
 			mimeType = "application/octet-stream"
 		}
+		fmt.Printf("=== MimeType for %q is %q ===\n", relPath, mimeType)
 
 		resources = append(resources, mcp.Resource{
 			URI:      "file:///" + relPath,
-			Name:     relPath,
+			Name:     filepath.Base(relPath),
 			MimeType: mimeType,
 			Size:     info.Size(),
-			Meta:     fileResourceMeta(relPath, info),
+			Annotations: &mcp.Annotations{
+				LastModified: info.ModTime(),
+			},
+			Meta: map[string]any{
+				types.MetaPrefix + "/server-name": "nanobot.system",
+			},
 		})
 
 		return nil
@@ -246,27 +222,32 @@ func (s *Server) readFileResource(uri string) (*mcp.ReadResourceResult, error) {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	info, err := f.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat file: %w", err)
-	}
-
 	// Determine MIME type
 	mimeType := mime.TypeByExtension(filepath.Ext(relPath))
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
 	}
 
-	contentStr := string(content)
+	rc := mcp.ResourceContent{
+		URI:      uri,
+		Name:     filepath.Base(relPath),
+		MIMEType: mimeType,
+		Meta: map[string]any{
+			types.MetaPrefix + "/server-name": "nanobot.system",
+		},
+	}
+
+	if _, isText := types.TextMimeTypes[mimeType]; isText {
+		text := string(content)
+		rc.Text = &text
+	} else {
+		blob := base64.StdEncoding.EncodeToString(content)
+		rc.Blob = &blob
+	}
+
 	return &mcp.ReadResourceResult{
 		Contents: []mcp.ResourceContent{
-			{
-				URI:      uri,
-				Name:     filepath.Base(relPath),
-				MIMEType: mimeType,
-				Text:     &contentStr,
-				Meta:     fileResourceMeta(relPath, info),
-			},
+			rc,
 		},
 	}, nil
 }
@@ -310,4 +291,113 @@ func (s *Server) ensureFileWatcher() error {
 	})
 
 	return s.fileWatcherInitErr
+}
+
+// UploadFileParams are the parameters for the createFile tool.
+type UploadFileParams struct {
+	Name string `json:"name"`
+	Blob string `json:"blob"`
+}
+
+func (s *Server) uploadFile(ctx context.Context, params UploadFileParams) (*mcp.Resource, error) {
+	// TODO(njhale): This needs to upload a file to the session directory based on the name
+	if params.Name == "" {
+		return nil, mcp.ErrRPCInvalidParams.WithMessage("name is required")
+	}
+	if params.Blob == "" {
+		return nil, mcp.ErrRPCInvalidParams.WithMessage("blob is required")
+	}
+
+	// Security: clean path and reject traversal / absolute paths
+	relPath := filepath.Clean(params.Name)
+	if strings.HasPrefix(relPath, "..") || filepath.IsAbs(relPath) {
+		return nil, mcp.ErrRPCInvalidParams.WithMessage("invalid file path: cannot access files outside working directory")
+	}
+
+	// Decode base64 content
+	data, err := base64.StdEncoding.DecodeString(params.Blob)
+	if err != nil {
+		return nil, mcp.ErrRPCInvalidParams.WithMessage("invalid base64 blob: %v", err)
+	}
+
+	// Create parent directories if needed
+	dir := filepath.Dir(relPath)
+	if dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create directories: %w", err)
+		}
+	}
+
+	// Write file
+	if err := os.WriteFile(relPath, data, 0644); err != nil {
+		return nil, fmt.Errorf("failed to write file: %w", err)
+	}
+
+	// Determine MIME type
+	mimeType := mime.TypeByExtension(filepath.Ext(relPath))
+	if mimeType == "" {
+		mimeType = "application/octet-stream"
+	}
+
+	info, err := os.Stat(relPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	return &mcp.Resource{
+		URI:      "file:///" + relPath,
+		Name:     filepath.Base(relPath),
+		MimeType: mimeType,
+		Size:     info.Size(),
+		Annotations: &mcp.Annotations{
+			LastModified: info.ModTime(),
+		},
+	}, nil
+}
+
+// DeleteFileParams are the parameters for the deleteFile tool.
+type DeleteFileParams struct {
+	URI string `json:"uri"`
+}
+
+func (s *Server) deleteFile(ctx context.Context, params DeleteFileParams) (string, error) {
+	if params.URI == "" {
+		return "", mcp.ErrRPCInvalidParams.WithMessage("uri is required")
+	}
+
+	if !strings.HasPrefix(params.URI, "file:///") {
+		return "", mcp.ErrRPCInvalidParams.WithMessage("uri must be a file:/// URI")
+	}
+
+	relPath := strings.TrimPrefix(params.URI, "file:///")
+	if relPath == "" {
+		return "", mcp.ErrRPCInvalidParams.WithMessage("file path is required")
+	}
+
+	// Security: clean path and reject traversal / absolute paths
+	cleanPath := filepath.Clean(relPath)
+	if strings.HasPrefix(cleanPath, "..") || filepath.IsAbs(cleanPath) {
+		return "", mcp.ErrRPCInvalidParams.WithMessage("invalid file path: cannot access files outside working directory")
+	}
+
+	info, err := os.Stat(cleanPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", mcp.ErrRPCInvalidParams.WithMessage("file not found: %s", params.URI)
+		}
+		return "", fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	if info.IsDir() {
+		if err := os.RemoveAll(cleanPath); err != nil {
+			return "", fmt.Errorf("failed to remove directory: %w", err)
+		}
+		return fmt.Sprintf("Deleted directory: %s", cleanPath), nil
+	}
+
+	if err := os.Remove(cleanPath); err != nil {
+		return "", fmt.Errorf("failed to remove file: %w", err)
+	}
+
+	return fmt.Sprintf("Deleted file: %s", cleanPath), nil
 }

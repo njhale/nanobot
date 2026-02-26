@@ -52,11 +52,8 @@ attachmentsLoop:
 			}
 		}
 
-		clientName := types.CurrentAgent(ctx)
-		if strings.HasPrefix(uri, "nanobot://") {
-			clientName = "nanobot.resources"
-		}
-
+		clientName := "nanobot.system"
+		// clientName := types.CurrentAgent(ctx)
 		client, err := c.s.runtime.GetClient(ctx, clientName)
 		if err != nil {
 			return nil, err
@@ -67,10 +64,16 @@ attachmentsLoop:
 
 		resource, err := client.ReadResource(ctx, uri)
 		if err != nil {
+			fmt.Printf("=== FAILED TO READ %q ===\n", uri)
 			return nil, err
 		}
+		fmt.Printf("=== SUCCESSFULLY READ %q ===\n", uri)
 
 		for _, content := range resource.Contents {
+			// if content.Meta["ai.nanobot.meta/server-name"] == "nanobot.system" {
+
+			// }
+
 			dataURI := content.ToDataURI()
 			attachmentData := map[string]any{
 				"url": dataURI,
@@ -78,6 +81,7 @@ attachmentsLoop:
 			if content.Name != "" {
 				attachmentData["name"] = content.Name
 			}
+
 			newAttachments = append(newAttachments, attachmentData)
 		}
 	}
