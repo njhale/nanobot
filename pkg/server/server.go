@@ -320,6 +320,9 @@ func (s *Server) initUI(params types.SessionInitHook) types.SessionInitHook {
 	if _, ok := params.Meta["ui"]; ok {
 		return params
 	}
+	if _, ok := params.Meta["chat"]; ok {
+		return params
+	}
 
 	u, err := url.Parse(params.URL)
 	if err != nil {
@@ -330,7 +333,8 @@ func (s *Server) initUI(params types.SessionInitHook) types.SessionInitHook {
 	if params.Meta == nil {
 		params.Meta = make(map[string]any)
 	}
-	params.Meta["ui"] = u.Query().Has("ui") || u.Path == "/mcp/ui"
+	params.Meta["ui"] = u.Path == "/mcp/ui"
+	params.Meta["chat"] = u.Path == "/mcp/chat"
 	return params
 }
 

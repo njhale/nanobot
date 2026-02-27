@@ -43,7 +43,7 @@ func (s *ToolsServer) OnMessage(ctx context.Context, msg mcp.Message) {
 	}
 }
 
-func (s *ToolsServer) initialize(_ context.Context, _ mcp.Message, params mcp.InitializeRequest) (*mcp.InitializeResult, error) {
+func (s *ToolsServer) initialize(ctx context.Context, _ mcp.Message, params mcp.InitializeRequest) (*mcp.InitializeResult, error) {
 	return &mcp.InitializeResult{
 		ProtocolVersion: params.ProtocolVersion,
 		Capabilities: mcp.ServerCapabilities{
