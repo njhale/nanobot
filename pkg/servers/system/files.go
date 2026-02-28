@@ -342,7 +342,7 @@ func (s *Server) uploadFile(ctx context.Context, params UploadFileParams) (*mcp.
 
 	// Security: clean path and reject traversal / absolute paths
 	relPath := filepath.Clean(params.Name)
-	if strings.HasPrefix(relPath, "..") || filepath.IsAbs(relPath) {
+	if strings.Contains(relPath, "..") || filepath.IsAbs(relPath) {
 		return nil, mcp.ErrRPCInvalidParams.WithMessage("invalid file path: cannot access files outside session directory")
 	}
 
@@ -411,7 +411,7 @@ func (s *Server) deleteFile(ctx context.Context, params DeleteFileParams) (strin
 
 	// Prevent directory traversal attacks
 	cleanPath := filepath.Clean(relPath)
-	if strings.HasPrefix(cleanPath, "..") || filepath.IsAbs(cleanPath) {
+	if strings.Contains(cleanPath, "..") || filepath.IsAbs(cleanPath) {
 		return "", mcp.ErrRPCInvalidParams.WithMessage("invalid file path: cannot access files outside session directory")
 	}
 
