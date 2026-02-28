@@ -18,6 +18,16 @@ const maxToolResultSize = 50 * 1024 // 50 KiB
 
 var sanitizeRe = regexp.MustCompile(`[^a-zA-Z0-9_\-.]`)
 
+// hasSkipTruncation returns true if any content item has the skip-truncation meta key set.
+func hasSkipTruncation(content []mcp.Content) bool {
+	for _, c := range content {
+		if v, ok := c.Meta[types.SkipTruncationMetaKey].(bool); ok && v {
+			return true
+		}
+	}
+	return false
+}
+
 func truncateToolResult(ctx context.Context, toolName, callID string, msg *types.Message) *types.Message {
 	if msg == nil || len(msg.Items) == 0 {
 		return msg
@@ -30,6 +40,10 @@ func truncateToolResult(ctx context.Context, toolName, callID string, msg *types
 
 	content := result.Output.Content
 	if len(content) == 0 {
+		return msg
+	}
+
+	if hasSkipTruncation(content) {
 		return msg
 	}
 

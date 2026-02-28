@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/nanobot-ai/nanobot/pkg/fswatch"
 	"github.com/nanobot-ai/nanobot/pkg/log"
@@ -409,11 +408,6 @@ func (s *Server) readFileResource(ctx context.Context, uri string) (*mcp.ReadRes
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	info, err := f.Stat()
-	if err != nil {
-		return nil, fmt.Errorf("failed to stat file: %w", err)
-	}
-
 	mimeType := mime.TypeByExtension(filepath.Ext(relPath))
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
@@ -426,11 +420,6 @@ func (s *Server) readFileResource(ctx context.Context, uri string) (*mcp.ReadRes
 		URI:      uri,
 		Name:     filepath.Base(relPath),
 		MIMEType: mimeType,
-	}
-
-	rc.Meta = map[string]any{
-		"size":         info.Size(),
-		"lastModified": info.ModTime().UTC().Format(time.RFC3339),
 	}
 
 	if _, isImage := types.ImageMimeTypes[mimeType]; isImage {

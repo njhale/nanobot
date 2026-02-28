@@ -76,11 +76,11 @@ type ContentSource struct {
 	Type string `json:"type"`
 
 	// Type = base64
-	Data      string `json:"data"`
-	MediaType string `json:"media_type"`
+	Data      string `json:"data,omitempty"`
+	MediaType string `json:"media_type,omitempty"`
 
 	// Type = url
-	URL string `json:"url"`
+	URL string `json:"url,omitempty"`
 }
 
 type CustomTool struct {

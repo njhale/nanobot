@@ -30,6 +30,12 @@ attachmentsLoop:
 			continue
 		}
 
+		// Keep file attachments as file:/// references. The model receives a hidden
+		// instruction message about these paths and uses the read tool as needed.
+		if strings.HasPrefix(uri, "file:///") {
+			continue
+		}
+
 		if strings.HasPrefix(uri, "data:") || strings.HasPrefix(uri, "http://") || strings.HasPrefix(uri, "https://") {
 			continue
 		}
@@ -53,9 +59,6 @@ attachmentsLoop:
 		}
 
 		clientName := types.CurrentAgent(ctx)
-		if strings.HasPrefix(uri, "nanobot://") {
-			clientName = "nanobot.resources"
-		}
 
 		client, err := c.s.runtime.GetClient(ctx, clientName)
 		if err != nil {
@@ -78,6 +81,7 @@ attachmentsLoop:
 			if content.Name != "" {
 				attachmentData["name"] = content.Name
 			}
+
 			newAttachments = append(newAttachments, attachmentData)
 		}
 	}

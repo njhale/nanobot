@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Settings } from '@lucide/svelte';
+	import { Eye, Settings } from '@lucide/svelte';
 	import { renderMarkdown } from '$lib/markdown';
 	import type { Attachment, ChatResult, ChatMessageItemToolCall, ToolOutputItem } from '$lib/types';
 	import '@mcp-ui/client/ui-resource-renderer.wc.js';
@@ -12,6 +12,12 @@
 	}
 
 	let { item, onSend }: Props = $props();
+	let imagePreviewModal = $state<HTMLDialogElement>();
+	let selectedImagePreview = $state<{
+		data: string;
+		mimeType: string;
+		index: number;
+	} | null>(null);
 	let singleUIResource = $derived(
 		item.output?.content &&
 			item.output?.content?.filter((i) => {
@@ -73,6 +79,19 @@
 			// JSON parsing failed, fall back to string display
 		}
 		return { success: false, data: output };
+	}
+
+	function openImagePreview(item: ToolOutputItem, index: number) {
+		if (item.type !== 'image') {
+			return;
+		}
+
+		selectedImagePreview = {
+			data: item.data,
+			mimeType: item.mimeType || 'image/png',
+			index,
+		};
+		imagePreviewModal?.showModal();
 	}
 </script>
 
@@ -149,6 +168,18 @@
 							<div
 								class="prose overflow-x-auto rounded border border-success/20 bg-success/10 p-3 prose-invert"
 							>
+								{#if contentItem.type === 'image' && contentItem.data}
+									<div class="mb-2 flex justify-end">
+										<button
+											type="button"
+											class="btn btn-xs btn-ghost"
+											onclick={() => openImagePreview(contentItem, i)}
+										>
+											<Eye class="h-3.5 w-3.5" />
+											Preview
+										</button>
+									</div>
+								{/if}
 								{#if contentItem.type === 'text' && 'text' in contentItem && parseToolOutput(contentItem.text).success}
 									<!-- JSON Syntax Highlighted Display -->
 									{@html parseToolOutput(contentItem.text).data}
@@ -181,7 +212,7 @@
 					style={getStyle(contentItem, singleUIResource)}
 				/>
 			{/if}
-			{#if contentItem.type === 'image'}
+			{#if contentItem.type === 'image' && !contentItem._meta?.['ai.nanobot.meta/skip-truncation']}
 				<img
 					src="data:{contentItem.mimeType};base64,{contentItem.data}"
 					alt="Tool output"
@@ -191,3 +222,29 @@
 		{/each}
 	{/if}
 </div>
+
+<dialog bind:this={imagePreviewModal} class="modal modal-bottom sm:modal-middle">
+	<div class="modal-box max-h-[85vh] max-w-5xl overflow-auto">
+		<div class="mb-4 flex items-center justify-between">
+			<h3 class="text-lg font-semibold">
+				{#if selectedImagePreview}
+					Tool output image {selectedImagePreview.index + 1}
+				{:else}
+					Tool output image
+				{/if}
+			</h3>
+		</div>
+		{#if selectedImagePreview}
+			<img
+				src="data:{selectedImagePreview.mimeType};base64,{selectedImagePreview.data}"
+				alt="Tool output preview"
+				class="h-auto max-w-full rounded"
+			/>
+		{/if}
+		<div class="modal-action">
+			<form method="dialog">
+				<button class="btn">Close</button>
+			</form>
+		</div>
+	</div>
+</dialog>

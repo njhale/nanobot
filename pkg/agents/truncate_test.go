@@ -604,6 +604,72 @@ func TestTruncateToolResult_ExactlyAtLimit(t *testing.T) {
 	}
 }
 
+func TestTruncateToolResult_SkipTruncationMeta(t *testing.T) {
+	ctx := context.Background()
+	// Content with skip-truncation meta — entire result should be skipped.
+	bigData := strings.Repeat("x", maxToolResultSize+5000)
+	content := []mcp.Content{
+		{
+			Type: "image",
+			Data: bigData,
+			Meta: map[string]any{types.SkipTruncationMetaKey: true},
+		},
+	}
+	msg := makeToolResultMessage("call-skip", content, false)
+
+	result := truncateToolResult(ctx, "tool", "call-skip", msg)
+	if result != msg {
+		t.Error("expected same message returned when content has skip-truncation meta")
+	}
+}
+
+func TestTruncateToolResult_SkipTruncationMeta_MixedContent(t *testing.T) {
+	ctx := context.Background()
+
+	// If any content item has skip-truncation meta, the entire result is skipped.
+	bigText := strings.Repeat("t", maxToolResultSize+1000)
+	content := []mcp.Content{
+		{Type: "text", Text: bigText},
+		{
+			Type: "image",
+			Data: "base64imagedata",
+			Meta: map[string]any{types.SkipTruncationMetaKey: true},
+		},
+	}
+	msg := makeToolResultMessage("call-mix", content, false)
+
+	result := truncateToolResult(ctx, "tool", "call-mix", msg)
+	if result != msg {
+		t.Error("expected same message returned when any content has skip-truncation meta")
+	}
+}
+
+func TestHasSkipTruncation(t *testing.T) {
+	tests := []struct {
+		name    string
+		content []mcp.Content
+		want    bool
+	}{
+		{"nil content", nil, false},
+		{"no meta", []mcp.Content{{Type: "text"}}, false},
+		{"empty meta", []mcp.Content{{Type: "text", Meta: map[string]any{}}}, false},
+		{"false value", []mcp.Content{{Meta: map[string]any{types.SkipTruncationMetaKey: false}}}, false},
+		{"true value", []mcp.Content{{Meta: map[string]any{types.SkipTruncationMetaKey: true}}}, true},
+		{"non-bool value", []mcp.Content{{Meta: map[string]any{types.SkipTruncationMetaKey: "true"}}}, false},
+		{"mixed - one has meta", []mcp.Content{
+			{Type: "text", Text: "hello"},
+			{Type: "image", Data: "data", Meta: map[string]any{types.SkipTruncationMetaKey: true}},
+		}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := hasSkipTruncation(tt.content); got != tt.want {
+				t.Errorf("hasSkipTruncation() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestTruncateToolResult_SpecialCharsInNames(t *testing.T) {
 	origDir, _ := os.Getwd()
 	tmpDir := t.TempDir()

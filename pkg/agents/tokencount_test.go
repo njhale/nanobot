@@ -1,6 +1,11 @@
 package agents
 
 import (
+	"bytes"
+	"encoding/base64"
+	"image"
+	"image/color"
+	"image/jpeg"
 	"strings"
 	"testing"
 
@@ -135,5 +140,84 @@ func TestCountTokens_KnownString(t *testing.T) {
 	tokens := countTokens("hello world")
 	if tokens < 1 || tokens > 5 {
 		t.Errorf("expected 1-5 tokens for 'hello world', got %d", tokens)
+	}
+}
+
+// createTestJPEG generates a base64-encoded JPEG image of the given dimensions.
+func createTestJPEG(t *testing.T, w, h int) string {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := range h {
+		for x := range w {
+			img.Set(x, y, color.RGBA{R: 255, G: 0, B: 0, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, nil); err != nil {
+		t.Fatalf("failed to encode test JPEG (%dx%d): %v", w, h, err)
+	}
+	return base64.StdEncoding.EncodeToString(buf.Bytes())
+}
+
+func TestEstimateImageTokens(t *testing.T) {
+	tests := []struct {
+		name     string
+		data     string
+		expected int
+	}{
+		{
+			name:     "Small",
+			data:     createTestJPEG(t, 100, 100),
+			expected: 13, // round(10000 / 750) = 13
+		},
+		{
+			name:     "ExactMaxEdge",
+			data:     createTestJPEG(t, 1568, 1000),
+			expected: 2091, // no resize, round(1568000 / 750) = 2091
+		},
+		{
+			name:     "SquareAtMax",
+			data:     createTestJPEG(t, 1568, 1568),
+			expected: 3278, // no resize, round(2458624 / 750) = 3278
+		},
+		{
+			name:     "LargeNeedsResize",
+			data:     createTestJPEG(t, 4000, 3000),
+			expected: 2459, // scale=1568/4000=0.392 -> 1568x1176, round(1843968 / 750) = 2459
+		},
+		{
+			name:     "TallPortrait",
+			data:     createTestJPEG(t, 1000, 3000),
+			expected: 1091, // scale=1568/3000=0.5227 -> 522x1568, round(818496 / 750) = 1091
+		},
+		{
+			name:     "Tiny",
+			data:     createTestJPEG(t, 1, 1),
+			expected: 0, // round(1 / 750) = 0
+		},
+		{
+			name:     "InvalidBase64",
+			data:     "!!!not-valid-base64!!!",
+			expected: 1600, // fallback: base64 decode fails
+		},
+		{
+			name:     "NotAnImage",
+			data:     base64.StdEncoding.EncodeToString([]byte("hello world")),
+			expected: 1600, // fallback: image.DecodeConfig fails
+		},
+		{
+			name:     "EmptyString",
+			data:     "",
+			expected: 1600, // fallback: empty data, DecodeConfig fails
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := estimateImageTokens(tt.data)
+			if got != tt.expected {
+				t.Errorf("estimateImageTokens() = %d, want %d", got, tt.expected)
+			}
+		})
 	}
 }

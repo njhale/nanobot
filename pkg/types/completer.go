@@ -134,7 +134,7 @@ func (c *CompletionItem) UnmarshalJSON(data []byte) error {
 	}
 
 	switch typeField {
-	case "text", "image", "audio", "resource":
+	case "text", "image", "audio", "resource", "resource_link":
 		c.Content = &mcp.Content{}
 		if err := json.Unmarshal(data, c.Content); err != nil {
 			return err

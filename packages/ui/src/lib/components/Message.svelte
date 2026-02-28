@@ -1,15 +1,16 @@
 <script lang="ts">
 	import MessageItem from './MessageItem.svelte';
-	import type { Attachment, ChatMessage, ChatResult } from '$lib/types';
+	import type { Attachment, ChatMessage, ChatResult, ResourceContents } from '$lib/types';
 	import MessageItemText from '$lib/components/MessageItemText.svelte';
 
 	interface Props {
 		message: ChatMessage;
 		timestamp?: Date;
 		onSend?: (message: string, attachments?: Attachment[]) => Promise<ChatResult | void>;
+		onReadResource?: (uri: string) => Promise<{ contents: ResourceContents[] }>;
 	}
 
-	let { message, timestamp, onSend }: Props = $props();
+	let { message, timestamp, onSend, onReadResource }: Props = $props();
 
 	const displayTime = $derived(
 		timestamp || (message.created ? new Date(message.created) : new Date())
@@ -25,7 +26,9 @@
 	});
 </script>
 
-{#if message.items?.[0]?._meta?.['ai.nanobot.meta/compaction-summary']}
+{#if message.items?.[0]?._meta?.['ai.nanobot.meta/attachment']}
+	<!-- Hidden attachment context message for model instructions -->
+{:else if message.items?.[0]?._meta?.['ai.nanobot.meta/compaction-summary']}
 	<div class="flex items-center gap-2 py-2 opacity-50">
 		<div class="h-px flex-1 bg-base-300"></div>
 		<span class="text-xs text-base-content/50">Earlier messages summarized</span>
@@ -49,7 +52,7 @@
 				<div class="rounded-box bg-base-200 p-2">
 					{#if message.items && message.items.length > 0}
 						{#each message.items as item (item.id)}
-							<MessageItem {item} role={message.role} />
+							<MessageItem {item} role={message.role} {onReadResource} />
 						{/each}
 					{:else}
 						<!-- Fallback for messages without items -->
@@ -71,7 +74,7 @@
 			<!-- Render all message items -->
 			{#if message.items && message.items.length > 0}
 				{#each message.items as item (item.id)}
-					<MessageItem {item} role={message.role} {onSend} />
+					<MessageItem {item} role={message.role} {onSend} {onReadResource} />
 				{/each}
 			{:else}
 				<!-- Fallback for messages without items -->
