@@ -20,8 +20,33 @@ sleep 2
 # Set DISPLAY for subsequent commands
 export DISPLAY=:${DISPLAY_NUM}
 
+# Configure Fluxbox for clean browser viewing:
+# - Hide desktop toolbar
+# - Remove window decorations to avoid extra chrome around the browser
+FLUXBOX_DIR="${HOME}/.fluxbox"
+mkdir -p "${FLUXBOX_DIR}"
+
+cat > "${FLUXBOX_DIR}/init" <<'EOF'
+session.screen0.toolbar.visible: false
+session.screen0.tabs.intitlebar: false
+session.screen0.tab.placement: TopLeft
+session.screen0.fullMaximization: true
+session.screen0.maxDisableMove: true
+session.screen0.maxDisableResize: true
+EOF
+
+cat > "${FLUXBOX_DIR}/apps" <<'EOF'
+[startup] {xsetroot -solid "#111111"}
+[app] (name=.*)
+  [Deco] {NONE}
+  [Layer] {Normal}
+  [FocusHidden] {yes}
+  [IconHidden] {yes}
+[end]
+EOF
+
 echo "Starting window manager (fluxbox)..."
-fluxbox &
+fluxbox -rc "${FLUXBOX_DIR}/init" &
 FLUXBOX_PID=$!
 
 echo "Starting x11vnc on port ${VNC_PORT}..."
